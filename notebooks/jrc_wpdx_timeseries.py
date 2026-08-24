@@ -1,3 +1,4 @@
+# %%
 """
 JRC Global Surface Water + WPDx overlay time series
 =====================================================
@@ -29,27 +30,34 @@ WPDx access notes:
   and adjust if your pull looks empty or mis-mapped.
 """
 
+# %%
 import ee
 import geemap
 import pandas as pd
 import requests
+from IPython.display import display
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # 0. CONFIG -- adjust these for your area/date range
 # ---------------------------------------------------------------------------
 
+# %%
 COUNTRY_NAME = "Kenya"
 START_DATE = "2018-01-01"
 END_DATE = "2026-01-01"
 
+# %%
 # Bounding box fallback if you don't want to wait on the WPDx pull first.
 # Rough Kenya bounding box: [min_lon, min_lat, max_lon, max_lat]
 KENYA_BBOX = [33.9, -4.7, 41.9, 5.1]
 
+# %%
 WPDX_RESOURCE_ID = "eqje-vguj"          # WPdx+ Socrata dataset id -- verify at
                                          # https://dev.socrata.com/foundry/data.waterpointdata.org/eqje-vguj
 WPDX_BASE_URL = f"https://data.waterpointdata.org/resource/{WPDX_RESOURCE_ID}.json"
 
+# %%
 # Common WPDx Data Standard field names -- confirm against the printed
 # column list in step 1 and adjust if your pull differs.
 COUNTRY_FIELD = "clean_country_name"
@@ -59,12 +67,15 @@ SOURCE_FIELD = "water_source_clean"
 STATUS_FIELD = "status_id"
 ID_FIELD = "wpdx_id"
 
+# %%
 MAX_POINTS = 2000   # cap the pull so the demo stays fast; raise as needed
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # 1. PULL WPDX ASSET DATA
 # ---------------------------------------------------------------------------
 
+# %%
 def fetch_wpdx(country=COUNTRY_NAME, limit=MAX_POINTS):
     params = {
         "$where": f"{COUNTRY_FIELD}='{country}'",
@@ -91,24 +102,35 @@ def fetch_wpdx(country=COUNTRY_NAME, limit=MAX_POINTS):
     return df
 
 
+# %%
+def _clean_prop(value):
+    """Coerce missing/NaN values to '' -- raw NaN isn't valid JSON and makes
+    Earth Engine reject the whole FeatureCollection payload when rendering."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return value
+
+
 def wpdx_to_ee(df):
     """Convert the WPDx dataframe into an ee.FeatureCollection of points."""
     features = []
     for _, row in df.iterrows():
         geom = ee.Geometry.Point([row[LON_FIELD], row[LAT_FIELD]])
         props = {
-            "id": row.get(ID_FIELD, ""),
-            "source": row.get(SOURCE_FIELD, ""),
-            "status": row.get(STATUS_FIELD, ""),
+            "id": _clean_prop(row.get(ID_FIELD, "")),
+            "source": _clean_prop(row.get(SOURCE_FIELD, "")),
+            "status": _clean_prop(row.get(STATUS_FIELD, "")),
         }
         features.append(ee.Feature(geom, props))
     return ee.FeatureCollection(features)
 
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # 2. PULL JRC GLOBAL SURFACE WATER MONTHLY HISTORY
 # ---------------------------------------------------------------------------
 
+# %%
 def get_jrc_monthly(aoi, start_date=START_DATE, end_date=END_DATE):
     """
     JRC/GSW1_4/MonthlyHistory encodes each pixel per month as:
@@ -122,13 +144,16 @@ def get_jrc_monthly(aoi, start_date=START_DATE, end_date=END_DATE):
     return collection
 
 
+# %%
 JRC_VIS = {"min": 0, "max": 2, "palette": ["black", "sienna", "blue"]}
 
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # 3. INTERACTIVE MAP: JRC TIME SLIDER + WPDX OVERLAY
 # ---------------------------------------------------------------------------
 
+# %%
 def build_interactive_map(jrc_collection, wpdx_fc, aoi):
     m = geemap.Map()
     m.centerObject(aoi, zoom=6)
@@ -142,10 +167,12 @@ def build_interactive_map(jrc_collection, wpdx_fc, aoi):
     return m
 
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # 4. PER-ASSET TIME SERIES TABLE (works outside Jupyter too)
 # ---------------------------------------------------------------------------
 
+# %%
 def sample_jrc_at_points(jrc_collection, wpdx_fc, scale=30):
     """
     For each month in the JRC collection, sample the water classification at
@@ -173,10 +200,12 @@ def sample_jrc_at_points(jrc_collection, wpdx_fc, scale=30):
     return pd.DataFrame(rows)
 
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # 5. STANDALONE GIF EXPORT (no Jupyter required)
 # ---------------------------------------------------------------------------
 
+# %%
 def export_gif(jrc_collection, aoi, out_path="jrc_timeseries.gif", frames_per_second=3):
     """
     Renders the JRC monthly collection as a GIF clipped to aoi. WPDx points are
@@ -192,12 +221,14 @@ def export_gif(jrc_collection, aoi, out_path="jrc_timeseries.gif", frames_per_se
     print(f"Saved animation to {out_path}")
 
 
+# %% [markdown]
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
 
+# %%
 if __name__ == "__main__":
-    ee.Initialize()  # run `earthengine authenticate` once beforehand
+    ee.Initialize(project="dapp-dev-475812")  # run `earthengine authenticate` once beforehand
 
     print("Step 1: pulling WPDx data...")
     wpdx_df = fetch_wpdx()
@@ -210,7 +241,7 @@ if __name__ == "__main__":
 
     print("Step 3: building interactive map (open in Jupyter to see the time slider)...")
     m = build_interactive_map(jrc, wpdx_fc, aoi)
-    m  # in Jupyter, just leave this as the last line of a cell to display it
+    display(m)  # bare `m` only auto-displays if it's the cell's last statement -- it isn't here
 
     print("Step 4: sampling JRC values at each WPDx point (this can take a while)...")
     # Tip: restrict jrc/wpdx_fc to a small county or a handful of named assets
