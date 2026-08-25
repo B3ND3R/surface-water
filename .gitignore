@@ -7,3 +7,10 @@
 *.npy
 *.npz
 *.gif
+*.geojson
+
+# geemap/Earth Engine local request cache
+cache/
+
+# Bulk OSM reference data (one-time download, large binary)
+notebooks/data/
